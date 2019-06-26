@@ -1,0 +1,55 @@
+groups:
+- name: spring-boot-hello-world
+  jobs:
+  - build-test-deploy
+
+resources:
+- name: repo
+  type: git
+  source:
+    uri: https://github.com/cdelashmutt-pivotal/concourse-spring-boot.git
+    branch: master
+
+- name: deploy-app
+  type: cf
+  source:
+    api: ((cf-api))
+    username: ((cf-username))
+    password: ((cf-password))
+    organization: ((cf-org))
+    space: ((cf-space))
+    skip_cert_check: true
+jobs:
+- name: build-test-deploy
+  plan:
+  - get: spring-boot-hello-repo
+    trigger: true
+  - task: build-test-backend
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: openjdk
+          tag: 11.0-jdk
+      inputs:
+      - name: repo
+      outputs:
+      - name: repo-build
+      run:
+        path: sh
+        args:
+        - -c
+        - |
+          set -e
+          cd repo
+          ./gradlew build
+          cd ..
+          cp -r repo/* repo-build
+      params:
+        TERM: -dumb
+        GRADLE_OPTS: -Dorg.gradle.native=false
+        JAVA_OPTS: -Dhttp.proxyHost=isa-test-out.onefiserv.net -Dhttp.proxyPort=8080 -Dhttps.proxyHost=isa-test-out.onefiserv.net -Dhttps.proxyPort=8080
+  - put: deploy-app
+    params:
+      manifest: repo-build/manifest.yml
